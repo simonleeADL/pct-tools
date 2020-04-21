@@ -21,17 +21,22 @@ cosmic_proton = CosmicRaySpectrum()
 def read_data(input_file, weight=False, spectrum=None, t_obs=50 * u.h):
     columns = ['gamma_score_mean', 'energy_mean', 
                'source_az_mean', 'source_alt_mean', #'altitude_raw', 'azimuth_raw', 
-               'mc_energy']
+               'mc_energy','true_source_az','energy_range_min','energy_range_max']
 
     df_arr = fact.io.read_data(input_file, key='array_events')
     df_tel = fact.io.read_data(input_file, key='telescope_events')
+    df_runs = fact.io.read_data(input_file, key='runs')
 
     df = pd.merge(df_tel, df_arr, 
             on=['array_event_id', 'run_id'])
+    
+    df = pd.merge(df, df_runs,
+            on='run_id')
+    
     df = df[columns].dropna()
 
-    runs = fact.io.read_data(input_file, key='runs')
-    mc_production = MCSpectrum.from_cta_runs(runs)
+    
+    mc_production = MCSpectrum.from_cta_runs(df_runs)
 
     if weight:
         if spectrum == 'crab':
@@ -158,11 +163,20 @@ def scaling_factor(n_signal, n_background, t_signal, t_background, alpha=1, N=20
 
 def find_best_cuts(signal, background, alpha, regions=slice(0.0025, 0.08, 0.0025), 
                     thresholds=slice(0.05, 1, 0.05), method='simple'):
+                    
+    total_cuts = 0
+    succesful_cuts = 0
+    
 
     def significance_target(cuts, signal, background, alpha):
         theta2, p_cut = cuts
         n_signal, t_signal = count_events_in_region(signal, theta2=theta2, 
                                                 prediction_threshold=p_cut)
+        
+        nonlocal total_cuts
+        nonlocal succesful_cuts
+                                                
+        total_cuts += 1
 
         if method == 'exact':
             n_background, t_background = count_events_in_region(background, 
@@ -191,12 +205,13 @@ def find_best_cuts(signal, background, alpha, regions=slice(0.0025, 0.08, 0.0025
 
         n_on = n_signal + alpha * n_background
         n_off = n_background
+        succesful_cuts += 1
         return -calc_LiMa(n_on, n_off, alpha=alpha)
 
     result = brute(significance_target, ranges=[regions, thresholds], 
                             args=(signal, background, alpha), finish=None)
     
-    print(result)
+    print(result,str(int(round(100*succesful_cuts/total_cuts,0)))+'% of cuts did not fail')
     
     return result
 
@@ -211,6 +226,7 @@ def calc_relative_sensitivity(signal, background, bin_edges, alpha=1,
         s, b = select_events_in_energy_range(signal, background, e_low, e_high, 
                                             use_true_energy=use_true_energy)
 
+        print(round(e_low.value,2),'–',round(e_high.value,2),'TeV')
         theta2, cut = find_best_cuts(s, b, alpha=alpha, method=method)
 
         n_signal, t_signal = count_events_in_region(s, theta2=theta2, 

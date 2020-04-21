@@ -17,20 +17,29 @@ from plotting import plot_sensitivity, plot_crab_flux, plot_ref_sens
 @click.option('-t', '--t_obs', type=float, default=50)
 @click.option('--flux', default=True)
 @click.option('--ref', default=True)
+@click.option('-b', '--bins_number', default=15)
+@click.option('--auto_energy', is_flag=True, default=False)
 
-def main(gamma_input, proton_input, output, t_obs, flux, ref):
+def main(gamma_input, proton_input, output, t_obs, flux, ref, bins_number, auto_energy):
     t_obs *= u.h
 
     gammas = read_data(gamma_input, weight=True, spectrum='crab', t_obs=t_obs)
+    source_az = gammas['true_source_az'][0]*u.rad 
     protons = read_data(proton_input, weight=True, spectrum='proton', t_obs=t_obs)
 
-    gammas = add_theta(gammas)
-    protons = add_theta(protons)
+    gammas = add_theta(gammas,source_az=source_az.to(u.deg))
+    protons = add_theta(protons,source_az=source_az.to(u.deg))
+    
+    if not auto_energy:
+        e_min = 0.08; e_max = 300.0
+    else:
+        e_min = gammas['energy_range_min'][0]
+        e_max = gammas['energy_range_max'][0]
 
     bins, bin_centers, bin_widths = make_energy_bins(
-        e_min=0.08 * u.TeV, 
-        e_max=300 * u.TeV, 
-        bins=15,
+        e_min=e_min * u.TeV, 
+        e_max=e_max * u.TeV, 
+        bins=bins_number,
         centering='log'
         )
 
